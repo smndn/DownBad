@@ -28,10 +28,14 @@ class SimpleWebVideoDownloader:
         # Configuration file path
         self.config_file = os.path.join(os.path.expanduser("~"), ".web_video_downloader_config.json")
         
+        # Check for FFmpeg
+        self.ffmpeg_available = self.check_ffmpeg()
+        
         # Variables
         self.folder_path = tk.StringVar()
         self.url = tk.StringVar()
-        self.audio_only = tk.BooleanVar()
+        self.download_video = tk.BooleanVar(value=True)  # Auto-select video
+        self.download_audio = tk.BooleanVar(value=False)  # Audio optional
         self.progress_value = tk.DoubleVar()
         self.status_text = tk.StringVar(value="✨ Ready")
         
@@ -139,10 +143,22 @@ class SimpleWebVideoDownloader:
                                  bd=0)
         self.url_entry.pack(fill=tk.X, pady=(0, 15), padx=12)
         
-        # Audio-only checkbox
+        # Download video checkbox
+        self.video_checkbox = tk.Checkbutton(settings_content,
+                                            text="Download Video",
+                                            variable=self.download_video,
+                                            font=('SF Pro Display', 10),
+                                            fg='#e8e8e8',
+                                            bg='#16213e',
+                                            selectcolor='#0f172a',
+                                            activebackground='#16213e',
+                                            activeforeground='#e8e8e8')
+        self.video_checkbox.pack(anchor=tk.W, pady=(0, 15))
+        
+        # Download audio checkbox
         self.audio_checkbox = tk.Checkbutton(settings_content,
-                                            text="Audio-only (MP3)",
-                                            variable=self.audio_only,
+                                            text="Download Audio (MP3)",
+                                            variable=self.download_audio,
                                             font=('SF Pro Display', 10),
                                             fg='#e8e8e8',
                                             bg='#16213e',
@@ -337,7 +353,7 @@ class SimpleWebVideoDownloader:
             minutes = int((seconds % 3600) // 60)
             return f"{hours}h {minutes}m"
             
-    def add_download_item(self, download_id: int, url: str, audio_only: bool):
+    def add_download_item(self, download_id: int, url: str, download_video: bool, download_audio: bool):
         """Add a new download item to the UI with modern styling."""
         # Create download item container with rounded corners effect
         download_frame = tk.Frame(self.downloads_frame, 
@@ -355,9 +371,18 @@ class SimpleWebVideoDownloader:
         title_frame.pack(fill=tk.X, pady=(0, 8))
         
         # Download ID and type indicator
-        type_icon = "🎵" if audio_only else "🎬"
+        if download_video and download_audio:
+            type_icon = "🎬🎵"
+            type_text = "Video + Audio"
+        elif download_video:
+            type_icon = "🎬"
+            type_text = "Video Only"
+        else:
+            type_icon = "🎵"
+            type_text = "Audio Only"
+            
         title_label = tk.Label(title_frame, 
-                              text=f"{type_icon} Download #{download_id}",
+                              text=f"{type_icon} Download #{download_id} ({type_text})",
                               font=('SF Pro Display', 11, 'bold'),
                               fg='#e8e8e8',
                               bg='#1e293b')
@@ -390,8 +415,7 @@ class SimpleWebVideoDownloader:
         progress_bar = tk.Frame(progress_container, 
                                bg='#0f172a',
                                relief=tk.FLAT,
-                               bd=0,
-                               height=8)
+                               bd=0)
         progress_bar.pack(fill=tk.X)
         
         # Progress fill (will be updated)
@@ -422,7 +446,8 @@ class SimpleWebVideoDownloader:
         download_info = {
             'id': download_id,
             'url': url,
-            'audio_only': audio_only,
+            'download_video': download_video,
+            'download_audio': download_audio,
             'frame': download_frame,
             'title_label': title_label,
             'status_label': status_label,
@@ -540,40 +565,120 @@ class SimpleWebVideoDownloader:
         # Remove the download item after a delay
         self.root.after(3000, lambda: self.remove_download_item(download_info))
         
-    def run_download(self, url: str, path: str, audio_only: bool, download_info: Dict[str, Any]):
+    def run_download(self, url: str, path: str, download_video: bool, download_audio: bool, download_info: Dict[str, Any]):
         """Run the actual download in a separate thread."""
+        try:
+            # Get video info first
+            info_ydl = yt_dlp.YoutubeDL({'quiet': True})
+            info = info_ydl.extract_info(url, download=False)
+            title = info.get('title', 'Unknown')
+            
+            # Create subfolder if downloading both video and audio
+            if download_video and download_audio:
+                safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                download_path = os.path.join(path, safe_title)
+                os.makedirs(download_path, exist_ok=True)
+            else:
+                download_path = path
+            
+            # Download video if requested
+            if download_video:
+                self.download_video_only(url, download_path, download_info)
+            
+            # Download audio if requested
+            if download_audio:
+                self.download_audio_only(url, download_path, download_info)
+                
+            self.on_download_complete(download_info)
+            
+        except Exception as e:
+            error_msg = str(e)
+            self.on_download_error(error_msg, download_info)
+    
+    def download_video_only(self, url: str, path: str, download_info: Dict[str, Any]):
+        """Download highest quality video only."""
         ydl_opts = {
             'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
             'progress_hooks': [self.create_progress_hook(download_info)],
+            'format': 'bestvideo',  # Get best video quality (any format)
         }
         
-        if audio_only:
-            ydl_opts['format'] = 'bestaudio/best'
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '0',
-            }]
+        # Set FFmpeg path if available
+        ffmpeg_found = False
+        if getattr(sys, 'frozen', False):
+            bundle_dir = os.path.dirname(os.path.dirname(os.path.dirname(sys.executable)))
+            ffmpeg_path = os.path.join(bundle_dir, 'Contents', 'Frameworks', 'ffmpeg')
+            if os.path.exists(ffmpeg_path) and os.access(ffmpeg_path, os.X_OK):
+                ydl_opts['ffmpeg_location'] = ffmpeg_path
+                ffmpeg_found = True
+                print(f"USING BUNDLED FFMPEG: {ffmpeg_path}")
+            else:
+                print(f"BUNDLED FFMPEG NOT FOUND OR NOT EXECUTABLE: {ffmpeg_path}")
         else:
-            # Force MP4 format for video downloads
-            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-            ydl_opts['merge_output_format'] = 'mp4'
-            
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            self.on_download_complete(download_info)
-        except Exception as e:
-            self.on_download_error(e, download_info)
-            
+            try:
+                result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    ffmpeg_found = True
+                    print("SYSTEM FFMPEG FOUND")
+            except:
+                pass
+        
+        # If FFmpeg is available, add post-processor to convert to MP4
+        if ffmpeg_found:
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }]
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    
+    def download_audio_only(self, url: str, path: str, download_info: Dict[str, Any]):
+        """Download highest quality audio only."""
+        ydl_opts = {
+            'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
+            'progress_hooks': [self.create_progress_hook(download_info)],
+            'format': 'bestaudio',  # Get best audio quality
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+                'preferredquality': '192',
+            }],
+        }
+        
+        # Set FFmpeg path if available
+        if getattr(sys, 'frozen', False):
+            bundle_dir = os.path.dirname(os.path.dirname(os.path.dirname(sys.executable)))
+            ffmpeg_path = os.path.join(bundle_dir, 'Contents', 'Frameworks', 'ffmpeg')
+            if os.path.exists(ffmpeg_path) and os.access(ffmpeg_path, os.X_OK):
+                ydl_opts['ffmpeg_location'] = ffmpeg_path
+                print(f"USING BUNDLED FFMPEG: {ffmpeg_path}")
+            else:
+                print(f"BUNDLED FFMPEG NOT FOUND OR NOT EXECUTABLE: {ffmpeg_path}")
+        else:
+            try:
+                result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    print("SYSTEM FFMPEG FOUND")
+            except:
+                pass
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        
     def start_download(self):
         """Start the download process."""
         url = self.url.get().strip()
         path = self.folder_path.get().strip()
-        audio_only = self.audio_only.get()
+        download_video = self.download_video.get()
+        download_audio = self.download_audio.get()
         
         if not self.validate_url(url) or not self.validate_folder(path):
             messagebox.showerror("Invalid Input", "Please check your URL and folder selection.")
+            return
+            
+        if not download_video and not download_audio:
+            messagebox.showerror("Invalid Selection", "Please select at least video or audio to download.")
             return
             
         # Increment download counter
@@ -586,12 +691,12 @@ class SimpleWebVideoDownloader:
         self.open_folder_button.config(state="disabled")
         
         # Create download info and start download
-        download_info = self.add_download_item(self.download_counter, url, audio_only)
+        download_info = self.add_download_item(self.download_counter, url, download_video, download_audio)
         
         # Start download in background thread
         download_thread = threading.Thread(
             target=self.run_download,
-            args=(url, path, audio_only, download_info),
+            args=(url, path, download_video, download_audio, download_info),
             daemon=True
         )
         download_thread.start()
@@ -679,6 +784,51 @@ class SimpleWebVideoDownloader:
     def run(self):
         """Start the application."""
         self.root.mainloop()
+
+    def check_ffmpeg(self):
+        """Check if FFmpeg is available on the system."""
+        try:
+            # First check if we're running from a bundled app
+            if getattr(sys, 'frozen', False):
+                # Running in a bundle, check for bundled FFmpeg
+                bundle_dir = os.path.dirname(sys.executable)
+                
+                # Check multiple possible locations for bundled FFmpeg
+                ffmpeg_locations = [
+                    os.path.join(bundle_dir, 'Contents', 'Frameworks', 'ffmpeg'),
+                    os.path.join(bundle_dir, 'ffmpeg'),
+                    os.path.join(bundle_dir, 'Contents', 'MacOS', 'ffmpeg'),
+                    os.path.join(bundle_dir, 'Contents', 'Resources', 'ffmpeg')
+                ]
+                
+                for ffmpeg_path in ffmpeg_locations:
+                    if os.path.exists(ffmpeg_path):
+                        return True
+                
+                return False
+            else:
+                # Running in development, check system FFmpeg
+                result = subprocess.run(['ffmpeg', '-version'], 
+                                      capture_output=True, 
+                                      text=True, 
+                                      timeout=5)
+                return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            return False
+            
+    def show_ffmpeg_warning(self):
+        """Show a warning dialog about FFmpeg not being available."""
+        warning_text = """FFmpeg is not available on your system.
+
+This app requires FFmpeg for video downloads and audio conversion. 
+
+To install FFmpeg:
+1. Install Homebrew (if not already installed): https://brew.sh
+2. Run: brew install ffmpeg
+
+Audio-only downloads may still work without FFmpeg."""
+        
+        messagebox.showwarning("FFmpeg Not Found", warning_text)
 
 
 def main():

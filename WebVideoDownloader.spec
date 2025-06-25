@@ -1,11 +1,55 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+import subprocess
+import shutil
 
 block_cipher = None
+
+# Find FFmpeg binary
+def find_ffmpeg():
+    """Find FFmpeg binary on the system."""
+    try:
+        # Try to find ffmpeg using which command
+        result = subprocess.run(['which', 'ffmpeg'], capture_output=True, text=True)
+        if result.returncode == 0:
+            ffmpeg_path = result.stdout.strip()
+            if os.path.exists(ffmpeg_path):
+                return ffmpeg_path
+    except:
+        pass
+    
+    # Common FFmpeg locations on macOS
+    common_paths = [
+        '/opt/homebrew/bin/ffmpeg',
+        '/usr/local/bin/ffmpeg',
+        '/usr/bin/ffmpeg'
+    ]
+    
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
+# Get FFmpeg binary path
+ffmpeg_path = find_ffmpeg()
+binaries = []
+
+temp_ffmpeg = None
+if ffmpeg_path:
+    print(f"Found FFmpeg at: {ffmpeg_path}")
+    # Copy FFmpeg to a temp location with correct permissions
+    temp_ffmpeg = os.path.abspath("ffmpeg_bundled")
+    shutil.copy(ffmpeg_path, temp_ffmpeg)
+    os.chmod(temp_ffmpeg, 0o755)
+    binaries.append((temp_ffmpeg, 'Contents/Frameworks'))
+else:
+    print("Warning: FFmpeg not found. The app may not work properly for video downloads.")
 
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=[],
     hiddenimports=[],
     hookspath=[],

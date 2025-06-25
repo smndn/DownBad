@@ -19,6 +19,16 @@ if [ -d "dist/DownBad.app" ]; then
     echo "✅ Build successful!"
     echo "App location: dist/DownBad.app"
     
+    # Copy FFmpeg to the app bundle
+    echo "Copying FFmpeg to app bundle..."
+    if [ -f "ffmpeg_bundled" ]; then
+        cp ffmpeg_bundled dist/DownBad.app/Contents/Frameworks/ffmpeg
+        chmod +x dist/DownBad.app/Contents/Frameworks/ffmpeg
+        echo "✅ FFmpeg copied to app bundle!"
+    else
+        echo "⚠️  Warning: ffmpeg_bundled not found. App may not work properly."
+    fi
+    
     # Ask if user wants to install to Applications
     read -p "Install to Applications folder? (y/n): " -n 1 -r
     echo
