@@ -388,13 +388,31 @@ class SimpleWebVideoDownloader:
                               bg='#1e293b')
         title_label.pack(side=tk.LEFT)
         
+        # Status and controls frame
+        status_controls_frame = tk.Frame(title_frame, bg='#1e293b')
+        status_controls_frame.pack(side=tk.RIGHT)
+        
+        # Cancel button
+        cancel_button = tk.Button(status_controls_frame,
+                                 text="❌",
+                                 font=('SF Pro Display', 10),
+                                 bg='#ef4444',
+                                 fg='white',
+                                 relief=tk.FLAT,
+                                 bd=0,
+                                 width=3,
+                                 command=lambda: self.cancel_download(download_id),
+                                 activebackground='#dc2626',
+                                 activeforeground='white')
+        cancel_button.pack(side=tk.RIGHT, padx=(8, 0))
+        
         # Status indicator
-        status_label = tk.Label(title_frame, 
+        status_label = tk.Label(status_controls_frame, 
                                text="Starting...",
                                font=('SF Pro Display', 10),
                                fg='#6366f1',
                                bg='#1e293b')
-        status_label.pack(side=tk.RIGHT)
+        status_label.pack(side=tk.RIGHT, padx=(0, 8))
         
         # URL preview (truncated)
         url_preview = url[:60] + "..." if len(url) > 60 else url
@@ -456,8 +474,11 @@ class SimpleWebVideoDownloader:
             'progress_fill': progress_fill,
             'percentage_label': percentage_label,
             'eta_label': eta_label,
+            'cancel_button': cancel_button,
             'start_time': time.time(),
-            'status': 'starting'
+            'status': 'starting',
+            'cancelled': False,  # Add cancellation flag
+            'thread': None  # Will store thread reference
         }
         
         self.active_downloads.append(download_info)
@@ -472,6 +493,10 @@ class SimpleWebVideoDownloader:
             
     def update_download_progress(self, download_info: Dict[str, Any], percentage: float, status: str, eta_text: str = ""):
         """Update progress for a specific download with modern styling."""
+        # Don't update if cancelled unless it's a cancellation status
+        if download_info['cancelled'] and status.lower() not in ['cancelling', 'cancelled']:
+            return
+            
         download_info['progress_var'].set(percentage)
         download_info['status_label'].config(text=status)
         download_info['eta_label'].config(text=eta_text)
@@ -502,6 +527,9 @@ class SimpleWebVideoDownloader:
         elif status.lower() == 'error':
             download_info['status_label'].config(fg='#ef4444')  # Red
             download_info['title_label'].config(fg='#ef4444')
+        elif status.lower() in ['cancelling', 'cancelled']:
+            download_info['status_label'].config(fg='#f59e0b')  # Orange
+            download_info['title_label'].config(fg='#94a3b8')  # Gray
         elif status.lower() in ['downloading', 'post-processing']:
             download_info['status_label'].config(fg='#6366f1')  # Purple
             download_info['title_label'].config(fg='#e8e8e8')
@@ -519,6 +547,10 @@ class SimpleWebVideoDownloader:
     def create_progress_hook(self, download_info: Dict[str, Any]):
         """Create a progress hook for yt-dlp."""
         def progress_hook(d):
+            # Check for cancellation
+            if download_info['cancelled']:
+                raise Exception("Download cancelled by user")
+                
             if d['status'] == 'downloading':
                 if 'total_bytes' in d and d['total_bytes']:
                     percentage = (d['downloaded_bytes'] / d['total_bytes']) * 100
@@ -568,10 +600,18 @@ class SimpleWebVideoDownloader:
     def run_download(self, url: str, path: str, download_video: bool, download_audio: bool, download_info: Dict[str, Any]):
         """Run the actual download in a separate thread."""
         try:
+            # Check for cancellation at the start
+            if download_info['cancelled']:
+                return
+                
             # Get video info first
             info_ydl = yt_dlp.YoutubeDL({'quiet': True})
             info = info_ydl.extract_info(url, download=False)
             title = info.get('title', 'Unknown')
+            
+            # Check for cancellation after getting info
+            if download_info['cancelled']:
+                return
             
             # Create subfolder if downloading both video and audio
             if download_video and download_audio:
@@ -582,21 +622,29 @@ class SimpleWebVideoDownloader:
                 download_path = path
             
             # Download video if requested
-            if download_video:
+            if download_video and not download_info['cancelled']:
                 self.download_video_only(url, download_path, download_info)
             
             # Download audio if requested
-            if download_audio:
+            if download_audio and not download_info['cancelled']:
                 self.download_audio_only(url, download_path, download_info)
                 
-            self.on_download_complete(download_info)
+            if not download_info['cancelled']:
+                self.on_download_complete(download_info)
             
         except Exception as e:
             error_msg = str(e)
+            if "cancelled by user" in error_msg.lower():
+                # Don't show error for user cancellation
+                return
             self.on_download_error(error_msg, download_info)
     
     def download_video_only(self, url: str, path: str, download_info: Dict[str, Any]):
         """Download highest quality video only."""
+        # Check for cancellation
+        if download_info['cancelled']:
+            return
+            
         ydl_opts = {
             'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
             'progress_hooks': [self.create_progress_hook(download_info)],
@@ -635,6 +683,10 @@ class SimpleWebVideoDownloader:
     
     def download_audio_only(self, url: str, path: str, download_info: Dict[str, Any]):
         """Download highest quality audio only."""
+        # Check for cancellation
+        if download_info['cancelled']:
+            return
+            
         ydl_opts = {
             'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
             'progress_hooks': [self.create_progress_hook(download_info)],
@@ -699,6 +751,7 @@ class SimpleWebVideoDownloader:
             args=(url, path, download_video, download_audio, download_info),
             daemon=True
         )
+        download_info['thread'] = download_thread  # Store thread reference
         download_thread.start()
         
     def open_folder(self):
@@ -829,6 +882,21 @@ To install FFmpeg:
 Audio-only downloads may still work without FFmpeg."""
         
         messagebox.showwarning("FFmpeg Not Found", warning_text)
+
+    def cancel_download(self, download_id: int):
+        """Cancel a download."""
+        for download_info in self.active_downloads:
+            if download_info['id'] == download_id:
+                # Set cancellation flag
+                download_info['cancelled'] = True
+                
+                # Update UI immediately
+                self.update_download_progress(download_info, 0, "Cancelling...")
+                download_info['cancel_button'].config(state="disabled", bg='#6b7280')
+                
+                # Schedule removal after a short delay
+                self.root.after(2000, lambda: self.remove_download_item(download_info))
+                break
 
 
 def main():
