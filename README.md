@@ -1,4 +1,4 @@
-# Simple Web Video Downloader
+# DownBad - Simple Web Video Downloader
 
 A minimal Python application for downloading YouTube videos and audio files with a clean, modern interface.
 
