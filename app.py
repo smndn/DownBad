@@ -21,9 +21,9 @@ class SimpleWebVideoDownloader:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("DownBad")
-        self.root.geometry("500x600")  # Larger initial size for modern UI
+        self.root.geometry("600x700")  # Larger initial size for better visibility
         self.root.resizable(True, True)
-        self.root.minsize(450, 500)  # Minimum window size
+        self.root.minsize(500, 600)  # Minimum window size
         
         # Configuration file path
         self.config_file = os.path.join(os.path.expanduser("~"), ".web_video_downloader_config.json")
@@ -58,207 +58,44 @@ class SimpleWebVideoDownloader:
         self.setup_bindings()
         
     def setup_ui(self):
-        """Create the modern user interface with island-like elements."""
-        # Main container with padding and background
-        main_container = tk.Frame(self.root, bg='#1a1a2e')
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Title section
-        title_frame = tk.Frame(main_container, bg='#1a1a2e')
-        title_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        title_label = tk.Label(title_frame, 
-                              text="DownBad", 
-                              font=('SF Pro Display', 24, 'bold'),
-                              fg='#8b5cf6',
-                              bg='#1a1a2e')
-        title_label.pack()
-        
-        subtitle_label = tk.Label(title_frame,
-                                 text="Modern Video Downloader",
-                                 font=('SF Pro Display', 12),
-                                 fg='#94a3b8',
-                                 bg='#1a1a2e')
-        subtitle_label.pack()
-        
-        # Settings Island
-        settings_island = tk.Frame(main_container, 
-                                  bg='#16213e',
-                                  relief=tk.FLAT,
-                                  bd=0)
-        settings_island.pack(fill=tk.X, pady=(0, 15))
-        
-        # Add padding to settings island content
-        settings_content = tk.Frame(settings_island, bg='#16213e')
-        settings_content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Folder selection section
-        folder_label = tk.Label(settings_content,
-                               text="Download Folder",
-                               font=('SF Pro Display', 12, 'bold'),
-                               fg='#e8e8e8',
-                               bg='#16213e')
-        folder_label.pack(anchor=tk.W, pady=(0, 8))
-        
-        folder_frame = tk.Frame(settings_content, bg='#16213e')
-        folder_frame.pack(fill=tk.X, pady=(0, 15))
-        
-        self.folder_entry = tk.Entry(folder_frame,
-                                    textvariable=self.folder_path,
-                                    font=('SF Pro Display', 10),
-                                    bg='#0f172a',
-                                    fg='#e8e8e8',
-                                    insertbackground='#8b5cf6',
-                                    relief=tk.FLAT,
-                                    bd=0)
-        self.folder_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), pady=8)
-        
-        self.browse_button = tk.Button(folder_frame,
-                                      text="📂 Browse",
-                                      font=('SF Pro Display', 10, 'bold'),
-                                      bg='#6366f1',
-                                      fg='white',
-                                      relief=tk.FLAT,
-                                      bd=0,
-                                      command=self.browse_folder,
-                                      activebackground='#4f46e5',
-                                      activeforeground='white')
-        self.browse_button.pack(side=tk.RIGHT, padx=15, pady=8)
-        
-        # URL input section
-        url_label = tk.Label(settings_content,
-                            text="Video URL",
-                            font=('SF Pro Display', 12, 'bold'),
-                            fg='#e8e8e8',
-                            bg='#16213e')
-        url_label.pack(anchor=tk.W, pady=(0, 8))
-        
-        self.url_entry = tk.Entry(settings_content,
-                                 textvariable=self.url,
-                                 font=('SF Pro Display', 10),
-                                 bg='#0f172a',
-                                 fg='#e8e8e8',
-                                 insertbackground='#8b5cf6',
-                                 relief=tk.FLAT,
-                                 bd=0)
-        self.url_entry.pack(fill=tk.X, pady=(0, 15), padx=12)
-        
-        # Download video checkbox
-        self.video_checkbox = tk.Checkbutton(settings_content,
-                                            text="Download Video",
-                                            variable=self.download_video,
-                                            font=('SF Pro Display', 10),
-                                            fg='#e8e8e8',
-                                            bg='#16213e',
-                                            selectcolor='#0f172a',
-                                            activebackground='#16213e',
-                                            activeforeground='#e8e8e8')
-        self.video_checkbox.pack(anchor=tk.W, pady=(0, 15))
-        
-        # Download audio checkbox
-        self.audio_checkbox = tk.Checkbutton(settings_content,
-                                            text="Download Audio (MP3)",
-                                            variable=self.download_audio,
-                                            font=('SF Pro Display', 10),
-                                            fg='#e8e8e8',
-                                            bg='#16213e',
-                                            selectcolor='#0f172a',
-                                            activebackground='#16213e',
-                                            activeforeground='#e8e8e8')
-        self.audio_checkbox.pack(anchor=tk.W, pady=(0, 15))
-        
-        # Download button
-        self.download_button = tk.Button(settings_content,
-                                        text="🚀 Start Download",
-                                        font=('SF Pro Display', 12, 'bold'),
-                                        bg='#6366f1',
-                                        fg='white',
-                                        relief=tk.FLAT,
-                                        bd=0,
-                                        command=self.start_download,
-                                        activebackground='#4f46e5',
-                                        activeforeground='white')
-        self.download_button.pack(fill=tk.X, padx=20, pady=12)
-        
-        # Downloads Island
-        downloads_island = tk.Frame(main_container,
-                                   bg='#16213e',
-                                   relief=tk.FLAT,
-                                   bd=0)
-        downloads_island.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
-        
-        # Add padding to downloads island content
-        downloads_content = tk.Frame(downloads_island, bg='#16213e')
-        downloads_content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        downloads_label = tk.Label(downloads_content,
-                                  text="Active Downloads",
-                                  font=('SF Pro Display', 12, 'bold'),
-                                  fg='#e8e8e8',
-                                  bg='#16213e')
-        downloads_label.pack(anchor=tk.W, pady=(0, 10))
-        
-        # Downloads container with scrollbar
-        downloads_container = tk.Frame(downloads_content, bg='#16213e')
-        downloads_container.pack(fill=tk.BOTH, expand=True)
-        
-        # Create canvas and scrollbar for downloads
-        self.downloads_canvas = tk.Canvas(downloads_container,
-                                         bg='#0f172a',
-                                         highlightthickness=0,
-                                         relief=tk.FLAT)
-        self.downloads_scrollbar = tk.Scrollbar(downloads_container,
-                                               orient="vertical",
-                                               command=self.downloads_canvas.yview,
-                                               bg='#0f172a',
-                                               troughcolor='#0f172a',
-                                               activebackground='#8b5cf6')
-        self.downloads_frame = tk.Frame(self.downloads_canvas, bg='#0f172a')
-        
-        self.downloads_canvas.configure(yscrollcommand=self.downloads_scrollbar.set)
-        
-        self.downloads_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.downloads_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.downloads_canvas.create_window((0, 0), window=self.downloads_frame, anchor="nw")
-        self.downloads_frame.bind("<Configure>", lambda e: self.downloads_canvas.configure(scrollregion=self.downloads_canvas.bbox("all")))
-        
-        # Status and controls island
-        controls_island = tk.Frame(main_container,
-                                  bg='#16213e',
-                                  relief=tk.FLAT,
-                                  bd=0)
-        controls_island.pack(fill=tk.X)
-        
-        # Add padding to controls island content
-        controls_content = tk.Frame(controls_island, bg='#16213e')
-        controls_content.pack(fill=tk.X, padx=20, pady=15)
-        
-        # Status label
-        self.status_label = tk.Label(controls_content,
-                                    textvariable=self.status_text,
-                                    font=('SF Pro Display', 10),
-                                    fg='#94a3b8',
-                                    bg='#16213e')
-        self.status_label.pack(side=tk.LEFT)
-        
-        # Open folder button
-        self.open_folder_button = tk.Button(controls_content,
-                                           text="📁 Open Folder",
-                                           font=('SF Pro Display', 10, 'bold'),
-                                           bg='#374151',
-                                           fg='#e8e8e8',
-                                           relief=tk.FLAT,
-                                           bd=0,
-                                           command=self.open_folder,
-                                           state="disabled",
-                                           activebackground='#4b5563',
-                                           activeforeground='#e8e8e8')
-        self.open_folder_button.pack(side=tk.RIGHT, padx=15, pady=8)
-        
-        # Configure grid weights for responsiveness
-        main_container.columnconfigure(0, weight=1)
-        main_container.rowconfigure(2, weight=1)  # Downloads island should expand
+        # Use light backgrounds and black text for all widgets
+        bg = "#f0f0f0"
+        fg = "black"
+        entry_bg = "white"
+        entry_fg = "black"
+
+        self.root.configure(bg=bg)
+        tk.Label(self.root, text="DownBad", font=("TkDefaultFont", 18, "bold"), bg=bg, fg=fg).pack(pady=(10, 10))
+
+        tk.Label(self.root, text="Download Folder:", bg=bg, fg=fg).pack(anchor=tk.W, padx=10)
+        folder_row = tk.Frame(self.root, bg=bg)
+        folder_row.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.folder_entry = tk.Entry(folder_row, textvariable=self.folder_path, bg=entry_bg, fg=entry_fg)
+        self.folder_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.browse_button = tk.Button(folder_row, text="Browse", command=self.browse_folder, bg=bg, fg=fg)
+        self.browse_button.pack(side=tk.RIGHT, padx=(5, 0))
+
+        tk.Label(self.root, text="Video URL:", bg=bg, fg=fg).pack(anchor=tk.W, padx=10)
+        self.url_entry = tk.Entry(self.root, textvariable=self.url, bg=entry_bg, fg=entry_fg)
+        self.url_entry.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        self.video_checkbox = tk.Checkbutton(self.root, text="Download Video", variable=self.download_video, bg=bg, fg=fg, selectcolor=bg, activebackground=bg, activeforeground=fg)
+        self.video_checkbox.pack(anchor=tk.W, padx=10)
+        self.audio_checkbox = tk.Checkbutton(self.root, text="Download Audio (MP3)", variable=self.download_audio, bg=bg, fg=fg, selectcolor=bg, activebackground=bg, activeforeground=fg)
+        self.audio_checkbox.pack(anchor=tk.W, padx=10, pady=(0, 10))
+
+        self.download_button = tk.Button(self.root, text="Start Download", command=self.start_download, bg=bg, fg=fg)
+        self.download_button.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        self.status_label = tk.Label(self.root, textvariable=self.status_text, anchor=tk.W, bg=bg, fg=fg)
+        self.status_label.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        self.open_folder_button = tk.Button(self.root, text="Open Folder", command=self.open_folder, state="disabled", bg=bg, fg=fg)
+        self.open_folder_button.pack(anchor=tk.E, padx=10, pady=(0, 10))
+
+        tk.Label(self.root, text="Active Downloads:", bg=bg, fg=fg).pack(anchor=tk.W, padx=10, pady=(10, 0))
+        self.downloads_frame = tk.Frame(self.root, bg=bg)
+        self.downloads_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
     def setup_bindings(self):
         """Set up keyboard shortcuts and bindings."""
@@ -383,7 +220,7 @@ class SimpleWebVideoDownloader:
             
         title_label = tk.Label(title_frame, 
                               text=f"{type_icon} Download #{download_id} ({type_text})",
-                              font=('SF Pro Display', 11, 'bold'),
+                              font=('Arial', 11, 'bold'),
                               fg='#e8e8e8',
                               bg='#1e293b')
         title_label.pack(side=tk.LEFT)
@@ -395,7 +232,7 @@ class SimpleWebVideoDownloader:
         # Cancel button
         cancel_button = tk.Button(status_controls_frame,
                                  text="❌",
-                                 font=('SF Pro Display', 10),
+                                 font=('Arial', 10),
                                  bg='#ef4444',
                                  fg='white',
                                  relief=tk.FLAT,
@@ -409,7 +246,7 @@ class SimpleWebVideoDownloader:
         # Status indicator
         status_label = tk.Label(status_controls_frame, 
                                text="Starting...",
-                               font=('SF Pro Display', 10),
+                               font=('Arial', 10),
                                fg='#6366f1',
                                bg='#1e293b')
         status_label.pack(side=tk.RIGHT, padx=(0, 8))
@@ -418,7 +255,7 @@ class SimpleWebVideoDownloader:
         url_preview = url[:60] + "..." if len(url) > 60 else url
         url_label = tk.Label(download_content,
                             text=url_preview,
-                            font=('SF Pro Display', 9),
+                            font=('Arial', 9),
                             fg='#94a3b8',
                             bg='#1e293b',
                             anchor=tk.W)
@@ -449,14 +286,14 @@ class SimpleWebVideoDownloader:
         
         percentage_label = tk.Label(info_frame,
                                    text="0%",
-                                   font=('SF Pro Display', 9),
+                                   font=('Arial', 9),
                                    fg='#6366f1',
                                    bg='#1e293b')
         percentage_label.pack(side=tk.LEFT)
         
         eta_label = tk.Label(info_frame,
                             text="",
-                            font=('SF Pro Display', 9),
+                            font=('Arial', 9),
                             fg='#94a3b8',
                             bg='#1e293b')
         eta_label.pack(side=tk.RIGHT)
@@ -607,7 +444,7 @@ class SimpleWebVideoDownloader:
             # Get video info first
             info_ydl = yt_dlp.YoutubeDL({'quiet': True})
             info = info_ydl.extract_info(url, download=False)
-            title = info.get('title', 'Unknown')
+            title = info.get('title', 'Unknown') if info else 'Unknown'
             
             # Check for cancellation after getting info
             if download_info['cancelled']:
@@ -796,13 +633,13 @@ class SimpleWebVideoDownloader:
         
         # Configure colors
         style.configure('Purple.TFrame', background='#16213e')
-        style.configure('Purple.TLabel', background='#16213e', foreground='#e8e8e8', font=('SF Pro Display', 10))
+        style.configure('Purple.TLabel', background='#16213e', foreground='#e8e8e8', font=('Arial', 10))
         style.configure('Purple.TButton', 
                        background='#8b5cf6', 
                        foreground='white',
                        borderwidth=0,
                        focuscolor='none',
-                       font=('SF Pro Display', 10, 'bold'))
+                       font=('Arial', 10, 'bold'))
         style.map('Purple.TButton',
                  background=[('active', '#7c3aed'), ('pressed', '#6d28d9')])
         
@@ -811,12 +648,12 @@ class SimpleWebVideoDownloader:
                        foreground='#e8e8e8',
                        borderwidth=0,
                        focuscolor='#8b5cf6',
-                       font=('SF Pro Display', 10))
+                       font=('Arial', 10))
         
         style.configure('Purple.TCheckbutton', 
                        background='#16213e',
                        foreground='#e8e8e8',
-                       font=('SF Pro Display', 10))
+                       font=('Arial', 10))
         
         style.configure('Purple.Horizontal.TProgressbar',
                        background='#8b5cf6',
