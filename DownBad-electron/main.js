@@ -3,136 +3,249 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 
+let mainWindow;
+
 function createWindow() {
-  const win = new BrowserWindow({
-    width: 800,
-    height: 700,
-    minWidth: 700,
-    minHeight: 600,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    },
-    titleBarStyle: 'hiddenInset',
-    vibrancy: 'under-window',
-    visualEffectState: 'active'
-  });
-  win.loadFile('index.html');
+    mainWindow = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        minWidth: 800,
+        minHeight: 600,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false
+        },
+        titleBarStyle: 'hiddenInset', // For macOS - allows dragging from title bar area
+        frame: true, // Keep the frame for proper window controls
+        icon: path.join(__dirname, '../app_icon.icns'),
+        show: false,
+        backgroundColor: '#1a1a2e'
+    });
+
+    mainWindow.loadFile('index.html');
+
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+    });
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
 }
 
-app.whenReady().then(() => {
-  createWindow();
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
 });
 
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit();
+app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
 });
 
-// Helper function to get Python and CLI paths
-function getPythonPaths() {
-  const isDev = !app.isPackaged;
-  
-  if (isDev) {
-    // Development mode - use relative paths
-    const parentDir = path.join(__dirname, '..');
-    return {
-      pythonPath: path.join(parentDir, 'venv', 'bin', 'python'),
-      cliPath: path.join(parentDir, 'download_cli.py'),
-      workingDir: parentDir
-    };
-  } else {
-    // Production mode - use bundled resources
-    const resourcesPath = process.resourcesPath;
-    return {
-      pythonPath: path.join(resourcesPath, 'venv', 'bin', 'python'),
-      cliPath: path.join(resourcesPath, 'download_cli.py'),
-      workingDir: resourcesPath
-    };
-  }
-}
-
-// IPC handler to call Python backend
-debug = true;
-ipcMain.handle('run-python', async (event, args) => {
-  return new Promise((resolve, reject) => {
-    const { pythonPath, cliPath, workingDir } = getPythonPaths();
-    
-    // Verify files exist
-    if (!fs.existsSync(pythonPath)) {
-      reject(`Python not found at: ${pythonPath}`);
-      return;
-    }
-    
-    if (!fs.existsSync(cliPath)) {
-      reject(`CLI script not found at: ${cliPath}`);
-      return;
-    }
-    
-    if (debug) {
-      console.log('Python path:', pythonPath);
-      console.log('CLI path:', cliPath);
-      console.log('Working dir:', workingDir);
-      console.log('Is packaged:', !app.isPackaged ? 'No (Development)' : 'Yes (Production)');
-    }
-    
-    const py = spawn(pythonPath, [cliPath, ...args], {
-      cwd: workingDir
-    });
-    
-    let output = '';
-    let error = '';
-    py.stdout.on('data', (data) => {
-      output += data.toString();
-      if (debug) console.log('PYTHON STDOUT:', data.toString());
-    });
-    py.stderr.on('data', (data) => {
-      error += data.toString();
-      if (debug) console.error('PYTHON STDERR:', data.toString());
-    });
-    py.on('close', (code) => {
-      if (code === 0) {
-        resolve(output);
-      } else {
-        reject(error || 'Python process failed');
-      }
-    });
-  });
-});
-
-// IPC handler for folder picker
+// IPC Handlers
 ipcMain.handle('choose-folder', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'],
-    title: 'Select Download Folder'
-  });
-  if (result.canceled || result.filePaths.length === 0) {
-    return '';
-  }
-  return result.filePaths[0];
-});
-
-// IPC handler for opening folder in Finder
-ipcMain.handle('open-folder', async (event, folderPath) => {
-  try {
-    if (fs.existsSync(folderPath)) {
-      await shell.openPath(folderPath);
-      return true;
-    } else {
-      throw new Error('Folder does not exist');
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+        title: 'Select Download Folder'
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+        return result.filePaths[0];
     }
-  } catch (error) {
-    console.error('Error opening folder:', error);
-    return false;
-  }
+    return null;
 });
 
-async function chooseFolder() {
-  const folder = await window.electronAPI.chooseFolder();
-  if (folder) {
-    document.getElementById('folder').value = folder;
-  }
+ipcMain.handle('open-folder', async (event, folderPath) => {
+    try {
+        await shell.openPath(folderPath);
+        return true;
+    } catch (error) {
+        console.error('Failed to open folder:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('start-download', async (event, args) => {
+    return new Promise((resolve, reject) => {
+        const [url, folder, ...options] = args;
+        
+        // Determine Python executable path
+        let pythonPath;
+        if (app.isPackaged) {
+            // In packaged app, use the bundled Python
+            pythonPath = path.join(process.resourcesPath, 'venv', 'bin', 'python');
+        } else {
+            // In development, use the virtual environment
+            pythonPath = path.join(__dirname, '..', 'venv', 'bin', 'python');
+        }
+        
+        // CLI script path
+        const cliPath = path.join(__dirname, '..', 'download_cli.py');
+        
+        // Check if files exist
+        if (!fs.existsSync(pythonPath)) {
+            reject(new Error(`Python not found at: ${pythonPath}`));
+            return;
+        }
+        
+        if (!fs.existsSync(cliPath)) {
+            reject(new Error(`CLI script not found at: ${cliPath}`));
+            return;
+        }
+        
+        console.log('Starting download with:', {
+            pythonPath,
+            cliPath,
+            url,
+            folder,
+            options
+        });
+        
+        const child = spawn(pythonPath, [cliPath, url, folder, ...options], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: {
+                ...process.env,
+                PYTHONIOENCODING: 'utf-8'
+            }
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        child.stdout.on('data', (data) => {
+            const output = data.toString();
+            stdout += output;
+            console.log('Download output:', output);
+            
+            // Send progress updates to renderer
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                const progressData = {
+                    id: Date.now().toString(), // Simple ID for now
+                    progress: parseProgress(output),
+                    speed: parseSpeed(output),
+                    eta: parseETA(output),
+                    stage: parseStage(output)
+                };
+                
+                // Only send if we have meaningful data
+                if (progressData.progress > 0 || progressData.stage || progressData.speed) {
+                    mainWindow.webContents.send('download-progress', progressData);
+                }
+            }
+        });
+        
+        child.stderr.on('data', (data) => {
+            const error = data.toString();
+            stderr += error;
+            console.error('Download error:', error);
+        });
+        
+        child.on('close', (code) => {
+            console.log('Download process closed with code:', code);
+            
+            if (code === 0) {
+                // Success
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('download-complete', {
+                        id: Date.now().toString(),
+                        success: true
+                    });
+                }
+                resolve({ success: true, output: stdout });
+            } else {
+                // Error
+                const error = stderr || `Process exited with code ${code}`;
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('download-error', {
+                        id: Date.now().toString(),
+                        error: error
+                    });
+                }
+                resolve({ success: false, error: error });
+            }
+        });
+        
+        child.on('error', (error) => {
+            console.error('Failed to start download process:', error);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('download-error', {
+                    id: Date.now().toString(),
+                    error: error.message
+                });
+            }
+            reject(error);
+        });
+    });
+});
+
+// Helper functions to parse yt-dlp output
+function parseProgress(output) {
+    // Look for various progress patterns
+    const patterns = [
+        /\[download\]\s+(\d+(?:\.\d+)?)%/,  // [download] 45.2%
+        /(\d+(?:\.\d+)?)%\s*of\s*\d+/,      // 45.2% of 100MB
+        /(\d+(?:\.\d+)?)%/,                 // Just percentage
+    ];
+    
+    for (const pattern of patterns) {
+        const match = output.match(pattern);
+        if (match) {
+            return parseFloat(match[1]);
+        }
+    }
+    return 0;
+}
+
+function parseSpeed(output) {
+    const patterns = [
+        /(\d+\.\d+\s*[KMGT]iB\/s)/i,       // 1.2MiB/s
+        /(\d+\.\d+\s*[KMGT]B\/s)/i,        // 1.2MB/s
+        /(\d+\s*[KMGT]iB\/s)/i,            // 1MiB/s
+    ];
+    
+    for (const pattern of patterns) {
+        const match = output.match(pattern);
+        if (match) {
+            return match[1];
+        }
+    }
+    return '';
+}
+
+function parseETA(output) {
+    const patterns = [
+        /(\d{2}:\d{2})/,                   // 12:34
+        /ETA\s+(\d{2}:\d{2})/,             // ETA 12:34
+        /(\d+:\d{2}:\d{2})/,               // 1:23:45
+    ];
+    
+    for (const pattern of patterns) {
+        const match = output.match(pattern);
+        if (match) {
+            return match[1];
+        }
+    }
+    return '';
+}
+
+function parseStage(output) {
+    const patterns = [
+        /Stage:\s*(.+)/,                    // Stage: message
+        /\[download\]\s*(.+)/,              // [download] message
+        /Downloading\s*(.+)/,               // Downloading message
+    ];
+    
+    for (const pattern of patterns) {
+        const match = output.match(pattern);
+        if (match) {
+            return match[1].trim();
+        }
+    }
+    return '';
 }
