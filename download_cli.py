@@ -154,38 +154,41 @@ def main():
 
 def check_ffmpeg():
     """Check if FFmpeg is available."""
-    try:
-        # Check bundled FFmpeg first (for packaged app)
-        if getattr(sys, 'frozen', False):
-            # Running in a packaged app
-            resources_path = os.path.join(os.path.dirname(sys.executable), '..', 'Resources')
-            bundled_ffmpeg = os.path.join(resources_path, 'ffmpeg')
-            if os.path.exists(bundled_ffmpeg) and os.access(bundled_ffmpeg, os.X_OK):
-                return True
-        
-        # Check system FFmpeg
-        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
-        return result.returncode == 0
-    except:
-        return False
+    return get_ffmpeg_path() is not None
 
 def get_ffmpeg_path():
     """Get FFmpeg path if available."""
     try:
         # Check bundled FFmpeg first (for packaged app)
         if getattr(sys, 'frozen', False):
-            # Running in a packaged app
-            resources_path = os.path.join(os.path.dirname(sys.executable), '..', 'Resources')
-            bundled_ffmpeg = os.path.join(resources_path, 'ffmpeg')
-            if os.path.exists(bundled_ffmpeg) and os.access(bundled_ffmpeg, os.X_OK):
-                return bundled_ffmpeg
+            # Running in a packaged app - check multiple possible locations
+            possible_paths = [
+                os.path.join(os.path.dirname(sys.executable), '..', 'Resources', 'ffmpeg'),
+                os.path.join(os.path.dirname(sys.executable), '..', '..', 'Resources', 'ffmpeg'),
+            ]
+            
+            for ffmpeg_path in possible_paths:
+                if ffmpeg_path and os.path.exists(ffmpeg_path) and os.access(ffmpeg_path, os.X_OK):
+                    print(f"Stage: Found bundled FFmpeg at: {ffmpeg_path}")
+                    return ffmpeg_path
+        
+        # Check for FFmpeg in the same directory as this script (for development)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        local_ffmpeg = os.path.join(script_dir, 'ffmpeg')
+        if os.path.exists(local_ffmpeg) and os.access(local_ffmpeg, os.X_OK):
+            print(f"Stage: Found local FFmpeg at: {local_ffmpeg}")
+            return local_ffmpeg
         
         # Check for system FFmpeg
         result = subprocess.run(['which', 'ffmpeg'], capture_output=True, text=True)
         if result.returncode == 0:
-            return result.stdout.strip()
-    except:
-        pass
+            system_ffmpeg = result.stdout.strip()
+            print(f"Stage: Found system FFmpeg at: {system_ffmpeg}")
+            return system_ffmpeg
+    except Exception as e:
+        print(f"Stage: Error finding FFmpeg: {str(e)}")
+    
+    print("Stage: No FFmpeg found")
     return None
 
 if __name__ == "__main__":

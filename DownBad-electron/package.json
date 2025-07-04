@@ -49,7 +49,7 @@
           "to": "download_cli.py"
         },
         {
-          "from": "/opt/homebrew/bin/ffmpeg",
+          "from": "resources/ffmpeg",
           "to": "ffmpeg"
         }
       ]
